@@ -19,7 +19,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.5", "hypothesis>=6.100"]
 
 [tool.setuptools.packages.find]
-include = ["llm*", "benchmarks*", "common*"]
+include = ["llm*", "benchmarks*", "common*", "verifier*", "agents*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

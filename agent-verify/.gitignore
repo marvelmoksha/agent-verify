@@ -8,3 +8,5 @@ __pycache__/
 logs/*
 !logs/.gitkeep
 vllm.log
+ollama.log
+*.log

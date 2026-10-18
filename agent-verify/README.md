@@ -3,19 +3,24 @@
 Multi-agent code solver with verifiable guarantees. A planner, coder, test writer and
 reviewer solve programming tasks; a deterministic, non-LLM verifier decides pass or fail.
 
-**This is the Phase 0 skeleton:** project layout, one LLM client for three backends,
-benchmark loaders, a fixed dev subset, JSONL logging with resume, and a smoke test.
+**Status: Phase 0 (skeleton) and Phase 1 (verifier + single-call baseline) are complete.**
 
 ## Layout
 
 ```
-llm/client.py            one chat() for local vLLM, OpenRouter, FreeLLMAPI
+llm/client.py            one chat() for local (Ollama/vLLM), OpenRouter, FreeLLMAPI
 benchmarks/loaders.py    HumanEval + MBPP -> common Task shape (hidden tests kept separate)
 benchmarks/dev_subset.py fixed 50-task dev subset with checksum
+verifier/sandbox.py      subprocess sandbox: timeout, memory/CPU/output limits, guards, sentinel
+verifier/extract.py      pulls code out of model replies (fences, truncated, raw, heuristic)
+verifier/runner.py       task + code -> sandboxed run against the HIDDEN tests
+agents/prompts.py        prompt templates (baseline for now)
 common/logging_schema.py JSONL logger, resume keys, silent-model-swap detector
-scripts/                 check_env.py, make_dev_subset.py, smoke_test.py
-colab/start_vllm.sh      starts a local model server on a Colab GPU
-tests/                   25 unit tests (run offline)
+common/summary.py        pass rates per seed/config, failure breakdown, token cost
+scripts/                 check_env, make_dev_subset, smoke_test, run_baseline, summarize
+colab/start_ollama.sh    one command: GPU check, Ollama, pull the pinned model
+colab/start_vllm.sh      optional vLLM server (fails fast now); Ollama is the default
+tests/                   69 offline unit tests (sandbox, extractor, runner, wiring, logging)
 ```
 
 ## Phase 0 steps
@@ -49,7 +54,7 @@ Every backend you plan to use should say `[ok] reachable`.
 ```bash
 pytest -q
 ```
-Expect `25 passed`.
+Expect all tests to pass (69 at Phase 1). The sandbox tests need Linux/macOS (use Colab or WSL on Windows).
 
 ### Step 6. Create the dev subset (once)
 ```bash
@@ -69,6 +74,7 @@ python scripts/smoke_test.py --backend freellmapi --model "<pinned-model-id>"
 If the Hugging Face download is blocked, add `--no-dataset`.
 
 ### Step 8. Smoke test on Colab (local model, used for all final runs)
+(Phase 0 originally used vLLM here. Ollama is now the default because it is more reliable on Colab.)
 1. Push the repo to GitHub (private is fine).
 2. In Colab: Runtime > Change runtime type > T4 GPU.
 3. Run these cells:
@@ -76,7 +82,7 @@ If the Hugging Face download is blocked, add `--no-dataset`.
 !git clone https://github.com/<you>/agent-verify.git
 %cd agent-verify
 !pip install -q -e .
-!bash colab/start_vllm.sh                      # first start downloads weights
+!bash colab/start_ollama.sh                    # GPU check, install, pull qwen2.5-coder:7b
 ```
 ```python
 from google.colab import drive
@@ -85,10 +91,10 @@ import os
 os.environ["AGENT_VERIFY_LOG_DIR"] = "/content/drive/MyDrive/agent-verify-logs"
 ```
 ```bash
-!python scripts/smoke_test.py --backend local --model Qwen/Qwen2.5-Coder-7B-Instruct-AWQ
+!python scripts/smoke_test.py --backend local --model qwen2.5-coder:7b
+!ollama ps          # must say 100% GPU; if it says CPU, something else is holding GPU memory
 ```
-If the model runs out of memory, use a smaller one (for example a 3B coder model) and pass
-its id to `start_vllm.sh` and `--model`.
+If the model runs out of memory, use a smaller one (for example `qwen2.5-coder:3b`).
 
 Note: the FreeLLMAPI proxy runs on your laptop, so Colab cannot reach `localhost:3001`.
 Use FreeLLMAPI and OpenRouter from the laptop, and the local model on Colab.
@@ -115,5 +121,55 @@ git add -A && git commit -m "Phase 0: skeleton, client, loaders, dev subset, log
 6. **Final runs use the local Colab model.** API tiers are for development and the
    stronger-reviewer / second-model replication experiments.
 
-## Next: Phase 1
-Sandboxed verifier (timeout, memory cap, no network), code extraction, and the single-call baseline.
+## Phase 1: verifier and single-call baseline
+
+### What was built
+- **Sandbox** (`verifier/sandbox.py`): each candidate runs in its own process with a wall-clock
+  timeout, CPU/memory/output-size limits, a throw-away directory, closed stdin, and guards
+  against network, process spawning and file deletion. A random sentinel printed *after* the
+  tests means `sys.exit(0)` tricks cannot fake a pass.
+  *These guards stop accidental damage from model-written code; they are not a security
+  boundary against deliberately hostile code. For stronger isolation, run in Docker or a
+  disposable Colab VM.*
+- **Extractor** (`verifier/extract.py`): fenced blocks (prefers the last block that defines the
+  entry function), truncated replies, raw code, and a heuristic fallback. Every result records how
+  the code was found.
+- **Baseline C1** (`scripts/run_baseline.py`): one model call per task, then verification.
+  Resumable, multi-seed, logs the verified code and stderr for later failure analysis.
+- **Summary** (`scripts/summarize.py`): pass rate per seed, mean and std per config, failure types,
+  tokens per task and per solved task, and an INVALID flag if more than one model served a run.
+
+### Run it (Colab, local model)
+```bash
+# 1. five tasks, to check the whole pipeline
+!python scripts/run_baseline.py --backend local --model qwen2.5-coder:7b --subset dev --limit 5
+
+# 2. the 50-task dev subset, 3 seeds
+!python scripts/run_baseline.py --backend local --model qwen2.5-coder:7b --subset dev --seeds 0 1 2
+
+# 3. read the results
+!python scripts/summarize.py $AGENT_VERIFY_LOG_DIR/*.jsonl      # or logs/*.jsonl
+
+# 4. later: the full benchmarks (164 + 500 tasks)
+!python scripts/run_baseline.py --backend local --model qwen2.5-coder:7b --subset full --seeds 0 1 2
+```
+If Colab disconnects, run the same command again; finished tasks are skipped, and tasks that
+failed only because the API or server was down are retried.
+
+For OpenRouter or FreeLLMAPI from your laptop, add `--sleep 3` to stay under free-tier rate limits.
+
+### Phase 1 is done when
+- [ ] `pytest -q` passes (69 tests)
+- [ ] the 5-task run completes and `summarize.py` prints a table
+- [ ] the 50-task dev run with 3 seeds completes; pass rate is in a believable range for the model
+- [ ] you have opened 20 failures in the log (`code` and `detail` fields) and confirmed they are
+      real model errors, not extraction or sandbox bugs
+- [ ] `models_served` shows exactly one model for the run
+
+### Known decisions to mention in the write-up
+- MBPP prompts show the first test case (standard convention); all tests are run.
+- Default temperature 0.2 with seeds 0, 1, 2. The seed is sent to the server; some servers
+  ignore it, so report the std across seeds rather than assuming exact reproducibility.
+
+## Next: Phase 2
+Planner, coder, test writer and reviewer agents; the orchestrator loop; configs C2 to C5.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -42,17 +43,21 @@ class LogRecord:
     latency_s: float = 0.0
     result: str = ""          # task_result only: "pass" | "fail" | "error"
     error_type: str = ""      # e.g. "timeout", "syntax", "wrong_answer", "extraction"
+    code: str = ""            # task_result only: the code that was verified (for failure analysis)
+    detail: str = ""          # task_result only: stderr tail / extra diagnosis
     timestamp: float = field(default_factory=time.time)
 
 
 class JsonlLogger:
+    _lock = threading.Lock()  # safe to share between worker threads
+
     def __init__(self, path: Union[str, Path]):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def log(self, record: LogRecord) -> None:
         line = json.dumps(asdict(record), ensure_ascii=False)
-        with self.path.open("a", encoding="utf-8") as f:
+        with self._lock, self.path.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
             f.flush()
             os.fsync(f.fileno())
@@ -75,11 +80,15 @@ def read_records(path: Union[str, Path]) -> Iterator[dict]:
 
 
 def completed_task_keys(path: Union[str, Path]) -> set[tuple[str, int, str]]:
-    """(config, seed, task_id) triples that already finished, for resuming a run."""
+    """(config, seed, task_id) triples that already finished, for resuming a run.
+
+    Tasks that ended in an infrastructure error (result == "error", e.g. the API was down)
+    are NOT finished: running the command again retries them.
+    """
     return {
         (r["config"], int(r["seed"]), r["task_id"])
         for r in read_records(path)
-        if r.get("kind") == KIND_TASK_RESULT
+        if r.get("kind") == KIND_TASK_RESULT and r.get("result") != "error"
     }
 
 

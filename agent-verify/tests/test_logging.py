@@ -37,3 +37,11 @@ def test_detects_silent_model_swap(tmp_path):
     lg.log(rec(KIND_LLM_CALL, "a", model="model-A"))
     lg.log(rec(KIND_LLM_CALL, "b", model="model-B"))
     assert models_served(p) == {"model-A", "model-B"}  # >1 means invalid run
+
+
+def test_api_errors_are_retried_on_resume(tmp_path):
+    p = tmp_path / "run.jsonl"
+    lg = JsonlLogger(p)
+    lg.log(rec(KIND_TASK_RESULT, "a", result="error"))
+    lg.log(rec(KIND_TASK_RESULT, "b", result="fail"))
+    assert completed_task_keys(p) == {("c1", 0, "b")}

@@ -1,3 +1,6 @@
 .env
 .venv/
 agent-verify/.env
+agent-verify/ollama.log
+*.log
+__pycache__/

@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover
 BACKENDS = ("local", "openrouter", "freellmapi")
 
 _DEFAULT_URLS = {
-    "local": "http://localhost:8000/v1",
+    "local": "http://localhost:11434/v1",  # Ollama default; vLLM uses :8000
     "openrouter": "https://openrouter.ai/api/v1",
     "freellmapi": "http://localhost:3001/v1",
 }
