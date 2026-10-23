@@ -1,0 +1,4 @@
+# Planner + coder, retry loop. No reviewer.
+name: c3_plan_retry
+plan: true
+max_rounds: 3

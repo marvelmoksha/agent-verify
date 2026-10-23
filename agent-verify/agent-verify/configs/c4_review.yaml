@@ -1,0 +1,4 @@
+# Coder + reviewer loop. No planner.
+name: c4_review
+reviewer: true
+max_rounds: 3

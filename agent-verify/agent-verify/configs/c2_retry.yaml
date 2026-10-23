@@ -1,0 +1,3 @@
+# Coder retries with the failing check's output. No planner, no reviewer.
+name: c2_retry
+max_rounds: 3

@@ -1,0 +1,10 @@
+openai>=1.40
+datasets>=2.19
+pandas>=2.0
+pyyaml>=6.0
+python-dotenv>=1.0
+
+[dev]
+pytest>=8.0
+ruff>=0.5
+hypothesis>=6.100

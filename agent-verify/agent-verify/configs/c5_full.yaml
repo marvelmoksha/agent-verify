@@ -1,0 +1,6 @@
+# Planner + test writer + coder + reviewer.
+name: c5_full
+plan: true
+test_writer: true
+reviewer: true
+max_rounds: 3

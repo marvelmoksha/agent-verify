@@ -1,0 +1,3 @@
+# One model call, no loop. Same code path as the others, for a fair comparison.
+name: c1_single
+max_rounds: 0
