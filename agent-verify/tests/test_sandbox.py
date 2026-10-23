@@ -94,3 +94,33 @@ def test_runs_in_a_throwaway_directory():
     run_python("open('leftover.txt', 'w').write('x')", **T)
     import os
     assert not os.path.exists("leftover.txt")
+
+
+def test_plain_subprocess_import_is_harmless():
+    """Libraries such as sympy import subprocess internally; that must not fail a solution."""
+    assert run_python("import subprocess\nassert 1 + 1 == 2", **T).passed
+
+
+@pytest.mark.parametrize("call", [
+    "subprocess.Popen(['echo', 'x'])", "subprocess.run(['echo', 'x'])",
+    "subprocess.check_output(['echo', 'x'])", "subprocess.call(['echo', 'x'])",
+    "subprocess.getoutput('echo x')",
+])
+def test_launching_processes_still_blocked(call):
+    assert run_python(f"import subprocess\n{call}", **T).error_type == "forbidden"
+
+
+def test_library_that_imports_subprocess_at_import_time_works():
+    """Reproduces the humaneval/39 false alarm: a stdlib module pulls subprocess in."""
+    r = run_python("import platform, shutil, tempfile\nassert platform.system()", **T)
+    assert r.passed, r.stderr_tail
+
+
+def test_traceback_shows_source_lines():
+    r = run_python("def f(x):\n    return x\n\nassert f(2) == 4", **T)
+    assert "assert f(2) == 4" in r.stderr_tail
+
+
+def test_trace_does_not_leak_the_sentinel():
+    r = run_python("def f(x):\n    return x\nassert f(2) == 4", **T)
+    assert "__VERIFY_OK_" not in r.stderr_tail

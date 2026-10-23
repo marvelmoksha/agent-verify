@@ -16,6 +16,7 @@ from typing import Iterator, Optional, Union
 
 KIND_LLM_CALL = "llm_call"
 KIND_TASK_RESULT = "task_result"
+KIND_ROUND = "round"          # one verifier check inside the repair loop
 
 
 def log_dir() -> Path:
@@ -45,6 +46,7 @@ class LogRecord:
     error_type: str = ""      # e.g. "timeout", "syntax", "wrong_answer", "extraction"
     code: str = ""            # task_result only: the code that was verified (for failure analysis)
     detail: str = ""          # task_result only: stderr tail / extra diagnosis
+    stop_reason: str = ""     # task_result only: checks_passed | max_rounds | budget | stalled | tests_wrong
     timestamp: float = field(default_factory=time.time)
 
 

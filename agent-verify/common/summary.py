@@ -38,6 +38,8 @@ def summarize(records: Iterable[dict]) -> dict:
             "failures": dict(fails),
             "mean_tokens_per_task": statistics.mean(tok) if tok else 0.0,
             "tokens_per_solved": (sum(tok) / passed) if passed else float("inf"),
+            "mean_rounds": (statistics.mean(int(t.get("round", 0)) for t in tasks.values()) if tasks else 0.0),
+            "stop_reasons": dict(Counter(t.get("stop_reason") or "n/a" for t in tasks.values())),
         }
 
     per_config = {}

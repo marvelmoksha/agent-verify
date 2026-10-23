@@ -1,6 +1,12 @@
 .env
 .venv/
-agent-verify/.env
-agent-verify/ollama.log
-*.log
 __pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+logs/*
+!logs/.gitkeep
+vllm.log
+ollama.log
+*.log

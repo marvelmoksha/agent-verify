@@ -4,7 +4,8 @@ What it enforces (Linux/macOS):
   * wall-clock timeout (whole process group is killed)
   * CPU-time, memory (address space) and output-file-size limits via `resource`
   * a throw-away working directory, stdin closed, minimal environment
-  * guards that block network use, process spawning, and file deletion helpers
+  * guards that block network use, process launching (importing subprocess is allowed because
+    harmless libraries do it), and file deletion helpers
   * a random sentinel printed AFTER the tests, so a program that calls sys.exit(0)
     early can never be counted as a pass
 
@@ -47,6 +48,11 @@ except ImportError:
 src = open(path, encoding="utf-8").read()
 os.remove(path)            # the program text (and its sentinel) is not readable later
 sys.argv = ["candidate"]
+import linecache
+_cut = src.rfind("\n\n__import__('sys').stdout.write(")
+_trace_src = src if _cut == -1 else src[:_cut] + "\n"
+linecache.cache["candidate.py"] = (len(_trace_src), None, _trace_src.splitlines(True), "candidate.py")
+del _trace_src, _cut
 code = compile(src, "candidate.py", "exec")
 del src
 
@@ -64,14 +70,25 @@ for _n in ("socket", "create_connection", "getaddrinfo", "gethostbyname", "socke
 for _n in ("system", "popen", "fork", "forkpty", "kill", "killpg", "remove", "unlink",
            "rmdir", "removedirs", "rename", "renames", "truncate", "chmod", "chown",
            "execv", "execve", "execvp", "execvpe", "execl", "execle", "execlp", "execlpe",
-           "spawnl", "spawnle", "spawnlp", "spawnlpe", "spawnv", "spawnve", "spawnvp", "spawnvpe"):
+           "spawnl", "spawnle", "spawnlp", "spawnlpe", "spawnv", "spawnve", "spawnvp", "spawnvpe",
+           "posix_spawn", "posix_spawnp"):
     if hasattr(os, _n):
         setattr(os, _n, _deny)
 shutil.rmtree = _deny
 shutil.move = _deny
-sys.modules["subprocess"] = None
+import subprocess
+for _n in ("Popen", "run", "call", "check_call", "check_output", "getoutput", "getstatusoutput"):
+    if hasattr(subprocess, _n):
+        setattr(subprocess, _n, _deny)
 
-exec(code, {"__name__": "candidate", "__builtins__": builtins})
+import traceback
+try:
+    exec(code, {"__name__": "candidate", "__builtins__": builtins})
+except SystemExit:
+    raise
+except BaseException:
+    traceback.print_exc()   # uses linecache, so the failing source line is shown
+    sys.exit(1)
 '''
 
 
